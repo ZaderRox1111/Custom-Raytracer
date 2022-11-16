@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 #include "Raycaster.h"
 #include "v3math.h"
 
@@ -56,10 +57,19 @@ typedef struct Light {
   float direction[3];
 } Light;
 
+void displayTime(clock_t time) {
+  double total = ((double) time) / CLOCKS_PER_SEC;
+
+  int milliseconds = (int) (-1 * (((int) total) - total) * 1000);
+  int minutes = (int) (total / 60);
+  int seconds = ((int) total) % 60;
+
+  printf("The raytracer took %d minutes, %d seconds, and %d milliseconds to execute\n", minutes, seconds, milliseconds);
+}
+
 // return smaller positive t value or negative if neither intersections are positive
 // return negative if no intersection
-float sphere_intersect(float *Rd, float *pos, float *R0, float radius)
-{
+float sphere_intersect(float *Rd, float *pos, float *R0, float radius) {
   // compute A, B, and C
   // since the Rd is normalized, A = 1
   float A = 1.0;
@@ -93,8 +103,7 @@ float sphere_intersect(float *Rd, float *pos, float *R0, float radius)
 // return t value
 // return negative if no intersection
 float plane_intersect(float *planePosition, float *planeNormal, 
-                        float *R0, float *Rd)
-{
+                        float *R0, float *Rd) {
     //a,b,c,d represent the plane vector
     // V0 = numerator of the t value equation
     // Vd = denominator of the t value equation
@@ -282,14 +291,29 @@ void illuminate(float *finalColor, Object *objects, Light *lights, int currObjIn
   }
 
   // add ambient light to color
-  // float ambient[3] = {0.01, 0.01, 0.01};
-  // v3_add(finalColor, finalColor, ambient);
+  float ambient[3] = {0.01, 0.01, 0.01};
+  v3_add(finalColor, finalColor, ambient);
 
   Object *surfaceObj = &objects[currObjIndex];
 
   float reflectAmount = 1 - surfaceObj->reflectivity;
   v3_scale(lightsColor, reflectAmount);
   v3_add(finalColor, lightsColor, finalColor);
+
+  // if there is no reflectivity, no reason to continue calculations
+  if (surfaceObj->reflectivity == 0) {
+    if (finalColor[0] > 1) {
+      finalColor[0] = 1;
+    }
+    if (finalColor[1] > 1) {
+      finalColor[1] = 1;
+    }
+    if (finalColor[2] > 1) {
+      finalColor[2] = 1;
+    }
+
+    return;
+  }
 
   // calculate new vector - reflection ray from first ray off object with intersection
   // shoot new ray and illuminate
@@ -344,8 +368,7 @@ void illuminate(float *finalColor, Object *objects, Light *lights, int currObjIn
 // checks if the ray hit an object
 // runs through whole list of objects checking for intersections
 // returns color of closest object or black background
-void intersect(float *finalColor, Object *objects, Light *lights, float *Rd, float *R0, float *cam, int *reflectLimit)
-{
+void intersect(float *finalColor, Object *objects, Light *lights, float *Rd, float *R0, float *cam, int *reflectLimit) {
   int closestObjIndex = -1;
   float tVal = shoot(&closestObjIndex, objects, Rd, R0, -1);
 
@@ -596,20 +619,19 @@ void read_objects(char *fileName, Object *objects, Light *lights) {
   fclose(fh);
 }
 
-void write_P6 (char *filename, int width, int height, int *image)
-{
+void write_P6 (char *filename, int width, int height, uint8_t *image) {
   FILE *fh = fopen(filename,"wb");
-  fprintf(fh,"P3 %d %d 255\n", width, height);
-  // fwrite(image, sizeof(uint8_t),width*height*3,fh);
-  for(int index = 0; index < width * height * 3; index += 1) {
-    fprintf(fh, "%d\n", image[index]);
-  }
+  fprintf(fh,"P6 %d %d 255\n", width, height);
+  fwrite(image, sizeof(uint8_t), width*height*3, fh);
   fclose(fh);
 }
 
 void generate_image(int pixelWidth, int pixelHeight, char *fileName, char *outputFile) {
+  // time measurement
+  clock_t time = clock();
+
   // create p6 output file
-  int *rgbFile = (int *) malloc(pixelWidth * pixelHeight * 3 * sizeof(int));
+  uint8_t *rgbFile = (uint8_t *) malloc(pixelWidth * pixelHeight * 3 * sizeof(uint8_t));
 
   // Read in the scene
   Object objects[128];
@@ -660,9 +682,9 @@ void generate_image(int pixelWidth, int pixelHeight, char *fileName, char *outpu
       intersect(currColor, objects, lights, Rd, camPosition, camPosition, &reflectLimit);
       
       // add color to uint8_t data thing (uint8_t)
-      rgbFile[rgbIndex + 0] = currColor[0] * 255;
-      rgbFile[rgbIndex + 1] = currColor[1] * 255;
-      rgbFile[rgbIndex + 2] = currColor[2] * 255;
+      rgbFile[rgbIndex + 0] = (uint8_t)(currColor[0] * 255);
+      rgbFile[rgbIndex + 1] = (uint8_t)(currColor[1] * 255);
+      rgbFile[rgbIndex + 2] = (uint8_t)(currColor[2] * 255);
 
       rgbIndex += 3;
     }
@@ -672,4 +694,8 @@ void generate_image(int pixelWidth, int pixelHeight, char *fileName, char *outpu
   write_P6(outputFile, pixelWidth, pixelHeight, rgbFile);
 
   free(rgbFile);
+
+  // final time measurement
+  time = clock() - time;
+  displayTime(time);
 }
