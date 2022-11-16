@@ -1,0 +1,1 @@
+void generate_image(int pixelWidth, int pixelHeight, char *fileName, char *outputFile);
